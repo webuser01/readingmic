@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>店家叫賣無限輪播機 - 攤位廣播 / 路跑賽事專用</title>
+  <!-- 載入 Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 載入 Google Fonts: Noto Sans TC 與 Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans TC"', 'Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Noto Sans TC', 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* 高對比大尺寸滑桿 */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 12px;
+      border-radius: 999px;
+      background: #334155;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #f59e0b;
+      cursor: pointer;
+      border: 3px solid #ffffff;
+      box-shadow: 0 3px 10px rgba(245, 158, 11, 0.5);
+      transition: transform 0.15s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:active {
+      transform: scale(1.18);
+    }
+
+    /* 廣播中光暈動畫 */
+    .broadcast-pulse {
+      animation: broadcastRing 1.6s infinite;
+    }
+    .recording-pulse {
+      animation: recordRing 1.1s infinite;
+    }
+
+    @keyframes broadcastRing {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); }
+      70% { box-shadow: 0 0 0 16px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    @keyframes recordRing {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.65); }
+      70% { box-shadow: 0 0 0 18px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center p-3 sm:p-6">
+
+  <!-- 頂部訊息提示條 (取代 alert) -->
+  <div id="toastBanner" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 hidden max-w-lg w-[94%] bg-amber-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 font-bold transition-all">
+    <span id="toastIcon" class="text-2xl">📢</span>
+    <p id="toastMessage" class="text-sm sm:text-base leading-snug flex-1"></p>
+    <button onclick="hideToast()" class="text-slate-900 hover:text-black p-1 text-2xl leading-none font-black">&times;</button>
+  </div>
+
+  <!-- 主容器 -->
+  <main class="w-full max-w-2xl space-y-5">
+
+    <!-- 頁首招牌區 -->
+    <header class="bg-slate-900 border-2 border-slate-800 rounded-3xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+      <div class="flex items-center gap-3.5">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-slate-950 shadow-lg shrink-0">
+          <!-- 大聲公圖示 -->
+          <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m3 11 18-5v12L3 14v-3z"/>
+            <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-black tracking-tight text-amber-400">
+            店家叫賣無限輪播機
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-300 font-bold">
+            攤位促銷・路跑補給站・門市廣播神器
+          </p>
+        </div>
+      </div>
+
+      <!-- 狀態徽章列：螢幕恆亮 + 累計播放次數 -->
+      <div class="flex items-center gap-2 ml-auto sm:ml-0">
+        <div id="wakeLockBadge" class="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-extrabold text-slate-400 flex items-center gap-1.5" title="開始輪播時自動防止螢幕休眠">
+          <span id="wakeLockDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+          <span id="wakeLockText">螢幕防休眠待機</span>
+        </div>
+        <div class="px-3.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-400/40 text-xs sm:text-sm font-black text-amber-300">
+          已播 <span id="playCountDisplay" class="text-base sm:text-lg text-amber-400">0</span> 次
+        </div>
+      </div>
+    </header>
+
+    <!-- 即時狀態看板與聲波視覺化 -->
+    <section id="statusBoard" class="bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 shadow-xl relative overflow-hidden">
+      <!-- 頂部大字狀態列 -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+        <div class="flex items-center gap-3">
+          <span id="statusIndicator" class="w-4 h-4 rounded-full bg-slate-500 shrink-0"></span>
+          <span id="statusMainText" class="text-lg sm:text-xl font-black text-white tracking-wide">
+            準備就緒・請錄製叫賣聲或開始輪播
+          </span>
+        </div>
+        <span id="nowPlayingTitle" class="text-xs sm:text-sm font-bold text-amber-400 bg-slate-800 px-3 py-1 rounded-xl border border-slate-700 truncate max-w-full sm:max-w-[220px]">
+          尚未選擇音軌
+        </span>
+      </div>
+
+      <!-- 動態聲波畫布 -->
+      <div class="relative w-full h-28 sm:h-32 bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center">
+        <canvas id="visualizerCanvas" class="w-full h-full"></canvas>
+        <!-- 間隔倒數大字覆蓋層 -->
+        <div id="countdownOverlay" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center">
+          <span class="text-xs sm:text-sm font-bold text-slate-400">下一輪廣播間隔休息中</span>
+          <div class="text-3xl sm:text-4xl font-black text-amber-400 mt-0.5">
+            倒數 <span id="countdownSeconds">5.0</span> 秒
+          </div>
+        </div>
+      </div>
+
+      <!-- 播放進度條與即時音量條 -->
+      <div class="mt-3 space-y-2">
+        <div class="flex justify-between text-xs font-bold text-slate-400">
+          <span id="progressLabel">播放進度</span>
+          <span id="timeDisplay">00:00 / 00:00</span>
+        </div>
+        <div class="w-full h-3.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+          <div id="progressBarFill" class="h-full w-0 bg-gradient-to-r from-emerald-400 to-amber-400 transition-all duration-100 rounded-full"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 超大核心操作按鈕區 (適合店門口平板/手機盲按) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <!-- 按鈕 1：錄製新叫賣聲 -->
+      <button id="recordBtn" onclick="toggleRecording()" class="py-5 px-6 rounded-3xl bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white font-black text-xl sm:text-2xl shadow-lg shadow-rose-950/60 border-2 border-rose-400/50 transition-all flex items-center justify-center gap-3">
+        <span id="recordBtnIcon" class="text-3xl">🎙️</span>
+        <span id="recordBtnText">開始錄製叫賣聲</span>
+      </button>
+
+      <!-- 按鈕 2：無限輪播開關 -->
+      <button id="loopToggleBtn" onclick="toggleBroadcastLoop()" class="py-5 px-6 rounded-3xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-black text-xl sm:text-2xl shadow-lg shadow-emerald-950/60 border-2 border-emerald-400/50 transition-all flex items-center justify-center gap-3">
+        <span id="loopBtnIcon" class="text-3xl">📢</span>
+        <span id="loopBtnText">開始無限輪播</span>
+      </button>
+    </section>
+
+    <!-- 輪播間隔與音量強化設定區 -->
+    <section class="bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 space-y-5 shadow-xl">
+      <h2 class="text-base sm:text-lg font-black text-amber-400 flex items-center gap-2">
+        <span>🎛️</span> 廣播間隔與喇叭擴音設定
+      </h2>
+
+      <!-- 1. 循環間隔休息秒數 -->
+      <div class="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <label for="intervalSlider" class="text-sm sm:text-base font-extrabold text-slate-200">
+            ⏱️ 每段叫賣間隔休息秒數
+          </label>
+          <span id="intervalBadge" class="px-3 py-1 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/40 text-sm sm:text-base font-black">
+            間隔 3 秒
+          </span>
+        </div>
+
+        <input id="intervalSlider" type="range" min="0" max="60" step="1" value="3" class="w-full" oninput="updateIntervalSetting(this.value)" />
+
+        <!-- 快捷秒數按鈕 -->
+        <div class="grid grid-cols-6 gap-1.5 sm:gap-2 pt-1">
+          <button onclick="setQuickInterval(0)" class="interval-preset py-2 rounded-xl text-xs sm:text-sm font-black bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 transition">0秒無縫</button>
+          <button onclick="setQuickInterval(3)" class="interval-preset py-2 rounded-xl text-xs sm:text-sm font-black bg-amber-500 text-slate-950 transition">3 秒</button>
+          <button onclick="setQuickInterval(5)" class="interval-preset py-2 rounded-xl text-xs sm:text-sm font-black bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 transition">5 秒</button>
+          <button onclick="setQuickInterval(10)" class="interval-preset py-2 rounded-xl text-xs sm:text-sm font-black bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 transition">10 秒</button>
+          <button onclick="setQuickInterval(15)" class="interval-preset py-2 rounded-xl text-xs sm:text-sm font-black bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 transition">15 秒</button>
+          <button onclick="setQuickInterval(30)" class="interval-preset py-2 rounded-xl text-xs sm:text-sm font-black bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 transition">30 秒</button>
+        </div>
+      </div>
+
+      <!-- 2. 音量增益與人聲清晰度強化 (Web Audio API GainNode + DynamicsCompressor) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-2.5">
+          <div class="flex justify-between items-center">
+            <label for="gainSlider" class="text-sm font-extrabold text-slate-200">🔊 擴音音量增益</label>
+            <span id="gainBadge" class="text-sm font-black text-emerald-400">150% (宏亮)</span>
+          </div>
+          <input id="gainSlider" type="range" min="100" max="300" step="10" value="150" class="w-full" oninput="updateAudioProcessing()" />
+          <p class="text-xs text-slate-400 font-medium">透過數位增益放大外接喇叭音量，防破音壓縮器自動保護。</p>
+        </div>
+
+        <div class="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between space-y-3">
+          <label class="flex items-center justify-between cursor-pointer">
+            <div>
+              <div class="text-sm font-extrabold text-slate-200">✨ 人聲清晰防破音強化</div>
+              <div class="text-xs text-slate-400">啟用動態壓縮器平衡大小聲</div>
+            </div>
+            <input id="compressorToggle" type="checkbox" checked class="w-6 h-6 accent-amber-500 rounded cursor-pointer" onchange="updateAudioProcessing()" />
+          </label>
+
+          <div class="flex items-center justify-between pt-1 border-t border-slate-800">
+            <label for="speedSelect" class="text-sm font-extrabold text-slate-200">⚡ 語速微調</label>
+            <select id="speedSelect" onchange="updatePlaybackSpeed()" class="bg-slate-800 text-amber-300 font-black text-sm px-3 py-1.5 rounded-xl border border-slate-700 outline-none">
+              <option value="0.9">0.9x 沉穩清楚</option>
+              <option value="1.0" selected>1.0x 正常原速</option>
+              <option value="1.1">1.1x 活力有精神</option>
+              <option value="1.2">1.2x 緊湊促銷</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 多組叫賣台詞清單與匯入/匯出管理 -->
+    <section class="bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="text-base sm:text-lg font-black text-amber-400 flex items-center gap-2">
+            <span>📋</span> 叫賣廣播曲目清單（依序輪播）
+          </h2>
+          <p class="text-xs text-slate-400 font-medium mt-0.5">勾選多段錄音可自動輪流廣播；支援匯入外部錄音檔</p>
+        </div>
+
+        <!-- 匯入本地音訊檔按鈕 -->
+        <div>
+          <input id="importAudioInput" type="file" accept="audio/*" class="hidden" onchange="handleImportAudio(event)" />
+          <button onclick="document.getElementById('importAudioInput').click()" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-black shadow flex items-center gap-1.5 transition">
+            <span>📂</span> 匯入音訊檔
+          </button>
+        </div>
+      </div>
+
+      <!-- 曲目列表容器 -->
+      <div id="trackListContainer" class="space-y-2.5">
+        <!-- 空狀態提示 -->
+        <div id="emptyTrackHint" class="text-center py-8 px-4 bg-slate-950/60 rounded-2xl border border-dashed border-slate-700">
+          <div class="text-3xl mb-2">🗣️</div>
+          <p class="text-sm sm:text-base font-bold text-slate-300">目前還沒有叫賣錄音喔！</p>
+          <p class="text-xs text-slate-400 mt-1">請點擊上方紅色按鈕「開始錄製叫賣聲」，或點擊「匯入音訊檔」載入現有廣播。</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 頁尾說明 -->
+  <footer class="mt-6 mb-4 text-center text-xs text-slate-400 font-medium space-y-1">
+    <p>💡 建議將手機/平板接上藍牙喇叭或擴音器，並開啟「開始無限輪播」即可自動循環叫賣</p>
+    <p class="text-slate-500">🔒 所有錄音皆在您的裝置本機處理，無需網路亦可離線使用</p>
+  </footer>
+
+  <!-- 隱藏的 HTML5 Audio 元素 (連接至 Web Audio API 增益管線) -->
+  <audio id="broadcastAudio" crossorigin="anonymous" playsinline></audio>
+
+  <script>
+    /**
+     * 店家叫賣無限輪播機 - 核心邏輯
+     * 整合：
+     * 1. MediaRecorder 麥克風錄音 & 匯出標準 WAV 格式
+     * 2. Web Audio API (GainNode + DynamicsCompressorNode) 人聲增益與防破音強化
+     * 3. 多組曲目排程輪播與自訂間隔倒數計時器
+     * 4. Screen Wake Lock API 防止店面平板/手機休眠
+     */
+
+    // ==========================================
+    // 1. 全域狀態變數
+    // ==========================================
+    let tracks = []; // { id, name, blob, url, duration, enabled }
+    let currentTrackIndex = -1;
+    let isRecording = false;
+    let isLooping = false;
+    let isWaitingInterval = false;
+    let totalPlayCount = 0;
+
+    // 參數設定
+    let intervalSeconds = 3;
+    let gainMultiplier = 1.5; // 1.0 ~ 3.0
+    let compressorEnabled = true;
+    let playbackSpeed = 1.0;
+
+    // 錄音相關
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordStartTime = 0;
+    let recordTimerInterval = null;
+
+    // Web Audio API 節點 (同時用於錄音音量分析與播放增益壓縮)
+    let audioCtx = null;
+    let analyserNode = null;
+    let micSourceNode = null;
+    let freqData = null;
+
+    let playbackSourceNode = null;
+    let gainNode = null;
+    let compressorNode = null;
+
+    // 間隔倒數計時器與 WakeLock
+    let countdownTimerId = null;
+    let countdownRemainingMs = 0;
+    let wakeLockSentinel = null;
+
+    // DOM 元素參照
+    const el = {
+      statusBoard: document.getElementById('statusBoard'),
+      statusIndicator: document.getElementById('statusIndicator'),
+      statusMainText: document.getElementById('statusMainText'),
+      nowPlayingTitle: document.getElementById('nowPlayingTitle'),
+      visualizerCanvas: document.getElementById('visualizerCanvas'),
+      countdownOverlay: document.getElementById('countdownOverlay'),
+      countdownSeconds: document.getElementById('countdownSeconds'),
+      progressLabel: document.getElementById('progressLabel'),
+      timeDisplay: document.getElementById('timeDisplay'),
+      progressBarFill: document.getElementById('progressBarFill'),
+      recordBtn: document.getElementById('recordBtn'),
+      recordBtnIcon: document.getElementById('recordBtnIcon'),
+      recordBtnText: document.getElementById('recordBtnText'),
+      loopToggleBtn: document.getElementById('loopToggleBtn'),
+      loopBtnIcon: document.getElementById('loopBtnIcon'),
+      loopBtnText: document.getElementById('loopBtnText'),
+      intervalSlider: document.getElementById('intervalSlider'),
+      intervalBadge: document.getElementById('intervalBadge'),
+      gainSlider: document.getElementById('gainSlider'),
+      gainBadge: document.getElementById('gainBadge'),
+      compressorToggle: document.getElementById('compressorToggle'),
+      speedSelect: document.getElementById('speedSelect'),
+      trackListContainer: document.getElementById('trackListContainer'),
+      emptyTrackHint: document.getElementById('emptyTrackHint'),
+      playCountDisplay: document.getElementById('playCountDisplay'),
+      wakeLockBadge: document.getElementById('wakeLockBadge'),
+      wakeLockDot: document.getElementById('wakeLockDot'),
+      wakeLockText: document.getElementById('wakeLockText'),
+      broadcastAudio: document.getElementById('broadcastAudio'),
+      toastBanner: document.getElementById('toastBanner'),
+      toastIcon: document.getElementById('toastIcon'),
+      toastMessage: document.getElementById('toastMessage')
+    };
+
+    // ==========================================
+    // 2. 初始化與畫面適配
+    // ==========================================
+    function resizeCanvas() {
+      const canvas = el.visualizerCanvas;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      startVisualizerRenderLoop();
+      setupAudioPlayerEvents();
+    });
+
+    // 頁面重新回到前景時，若仍在輪播中則重新請求 Wake Lock
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible' && isLooping) {
+        await requestWakeLock();
+      }
+    });
+
+    // ==========================================
+    // 3. 提示訊息工具 (取代 alert)
+    // ==========================================
+    let toastTimer = null;
+    function showToast(icon, message, duration = 4000) {
+      el.toastIcon.textContent = icon;
+      el.toastMessage.textContent = message;
+      el.toastBanner.classList.remove('hidden');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(hideToast, duration);
+    }
+
+    function hideToast() {
+      el.toastBanner.classList.add('hidden');
+    }
+
+    // ==========================================
+    // 4. Web Audio API 初始化與音量增益/壓縮管線
+    // ==========================================
+    async function ensureAudioContext() {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!audioCtx) {
+        audioCtx = new AudioCtx();
+      }
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+
+      // 建立播放端的 GainNode 與 DynamicsCompressorNode
+      if (!playbackSourceNode) {
+        playbackSourceNode = audioCtx.createMediaElementSource(el.broadcastAudio);
+        gainNode = audioCtx.createGain();
+        compressorNode = audioCtx.createDynamicsCompressor();
+
+        // 設定適合人聲叫賣的壓縮器參數（防止大聲喊叫時破音，同時提升小聲細節）
+        compressorNode.threshold.setValueAtTime(-22, audioCtx.currentTime);
+        compressorNode.knee.setValueAtTime(18, audioCtx.currentTime);
+        compressorNode.ratio.setValueAtTime(6, audioCtx.currentTime);
+        compressorNode.attack.setValueAtTime(0.005, audioCtx.currentTime);
+        compressorNode.release.setValueAtTime(0.15, audioCtx.currentTime);
+
+        // 建立共用的頻譜分析器用於播放時的聲波跳動
+        if (!analyserNode) {
+          analyserNode = audioCtx.createAnalyser();
+          analyserNode.fftSize = 128;
+          freqData = new Uint8Array(analyserNode.frequencyBinCount);
+        }
+
+        connectPlaybackGraph();
+      }
+    }
+
+    function connectPlaybackGraph() {
+      if (!playbackSourceNode || !gainNode || !compressorNode) return;
+      try {
+        playbackSourceNode.disconnect();
+     
